@@ -1,0 +1,1378 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Agentic URL Shortener",
+        "description": "Product APIs (URL shortener) and the agentic SDLC orchestrator control plane. Use Authorize: HTTP Basic locally, Bearer JWT in production.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8080",
+            "description": "Generated server url"
+        }
+    ],
+    "security": [
+        {
+            "basicAuth": []
+        },
+        {
+            "bearerAuth": []
+        }
+    ],
+    "tags": [
+        {
+            "name": "Short links",
+            "description": "Requires role USER; links are only visible to their owner or an ADMIN"
+        }
+    ],
+    "paths": {
+        "/orchestrator/runs": {
+            "get": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "operationId": "list",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/RunSummary"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Start a run; executes asynchronously (202)",
+                "operationId": "start",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StartRun"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}/stop": {
+            "post": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Safe-stop: drain in-flight stages, start nothing new",
+                "operationId": "stop",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}/reject": {
+            "post": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Reject a pending checkpoint; triggers rollback and fails the run",
+                "operationId": "reject",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Decision"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}/approve": {
+            "post": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Human approval of a pending checkpoint (four-eyes enforced for deploy/API changes)",
+                "operationId": "approve",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Decision"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}/amend": {
+            "post": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Amend an upstream artifact; downstream stages are re-planned",
+                "operationId": "amend",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Amend"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/urls": {
+            "post": {
+                "tags": [
+                    "Short links"
+                ],
+                "summary": "Create a short link",
+                "description": "201 on create, 200 when an Idempotency-Key replays",
+                "operationId": "create",
+                "parameters": [
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateUrlRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShortUrlResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/urls/{code}": {
+            "get": {
+                "tags": [
+                    "Short links"
+                ],
+                "summary": "Get link metadata",
+                "operationId": "get",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShortUrlResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Short links"
+                ],
+                "summary": "Deactivate a link (later redirects return 410)",
+                "operationId": "deactivate",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Short links"
+                ],
+                "summary": "Change destination and/or TTL",
+                "operationId": "update",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateUrlRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ShortUrlResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{code}": {
+            "get": {
+                "tags": [
+                    "Redirect"
+                ],
+                "summary": "Redirect to the destination (302) and record a click",
+                "operationId": "redirect",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "User-Agent",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "Referer",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/orchestrator/scenarios": {
+            "get": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Scenario briefs and their stage graphs",
+                "operationId": "scenarios",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ScenarioView"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}": {
+            "get": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Run snapshot: stages, artifacts, lineage, approvals, decisions, metrics",
+                "operationId": "get_1",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunView"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/runs/{id}/trace": {
+            "get": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Append-only audit trace for a run",
+                "operationId": "trace",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TraceEvent"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orchestrator/metrics": {
+            "get": {
+                "tags": [
+                    "SDLC orchestrator"
+                ],
+                "summary": "Reliability metrics: success rate, retries, fallbacks, rollbacks, MTTR, latency",
+                "operationId": "metrics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReliabilityMetrics"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/urls/{code}/analytics": {
+            "get": {
+                "tags": [
+                    "Short links"
+                ],
+                "summary": "Click analytics: totals, unique visitors, by day, top referrers",
+                "operationId": "analytics",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AnalyticsSummary"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "StartRun": {
+                "type": "object",
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "enum": [
+                            "GREENFIELD",
+                            "BROWNFIELD",
+                            "AMBIGUOUS"
+                        ],
+                        "example": "GREENFIELD"
+                    },
+                    "autoApprove": {
+                        "type": "boolean",
+                        "description": "Demo only; defaults to false"
+                    },
+                    "failureMode": {
+                        "type": "string",
+                        "description": "Fault injection for demos",
+                        "enum": [
+                            "NONE",
+                            "TRANSIENT",
+                            "PERSISTENT",
+                            "HANG"
+                        ],
+                        "example": "NONE"
+                    }
+                },
+                "required": [
+                    "scenario"
+                ]
+            },
+            "Approval": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "stageId": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "ASSUMPTION_ACCEPTANCE",
+                            "PUBLIC_API",
+                            "PRODUCTION_DEPLOY"
+                        ]
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "PENDING",
+                            "APPROVED",
+                            "REJECTED",
+                            "SUPERSEDED"
+                        ]
+                    },
+                    "requestedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "warnings": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "resolvedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "actor": {
+                        "type": "string"
+                    },
+                    "comment": {
+                        "type": "string"
+                    },
+                    "pending": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "ArtifactInfo": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "producedBy": {
+                        "type": "string"
+                    },
+                    "sha256": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "producedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                }
+            },
+            "DecisionRecord": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "stageId": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "AUTONOMY",
+                            "GATE",
+                            "RETRY",
+                            "FALLBACK",
+                            "ROLLBACK",
+                            "APPROVAL",
+                            "POLICY",
+                            "REPLAN",
+                            "SAFE_STOP"
+                        ]
+                    },
+                    "rationale": {
+                        "type": "string"
+                    },
+                    "outcome": {
+                        "type": "string"
+                    },
+                    "actor": {
+                        "type": "string"
+                    },
+                    "inputs": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                }
+            },
+            "RunMetrics": {
+                "type": "object",
+                "properties": {
+                    "retries": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "fallbacks": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "rollbacks": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "replans": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "approvalsRequested": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "stagesSucceeded": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "stagesFailed": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "endToEndLatencyMs": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "RunView": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "scenario": {
+                        "type": "string",
+                        "enum": [
+                            "GREENFIELD",
+                            "BROWNFIELD",
+                            "AMBIGUOUS"
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "RUNNING",
+                            "WAITING_APPROVAL",
+                            "SUCCEEDED",
+                            "FAILED",
+                            "STOPPED"
+                        ]
+                    },
+                    "error": {
+                        "type": "string"
+                    },
+                    "initiator": {
+                        "type": "string"
+                    },
+                    "autoApprove": {
+                        "type": "boolean"
+                    },
+                    "failureMode": {
+                        "type": "string",
+                        "enum": [
+                            "NONE",
+                            "TRANSIENT",
+                            "PERSISTENT",
+                            "HANG"
+                        ]
+                    },
+                    "startedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "stages": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StageView"
+                        }
+                    },
+                    "artifacts": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "additionalProperties": {}
+                        }
+                    },
+                    "artifactLineage": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/ArtifactInfo"
+                        }
+                    },
+                    "approvals": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Approval"
+                        }
+                    },
+                    "decisions": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DecisionRecord"
+                        }
+                    },
+                    "policyViolations": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "metrics": {
+                        "$ref": "#/components/schemas/RunMetrics"
+                    }
+                }
+            },
+            "StageView": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "REQUIREMENTS",
+                            "IMPACT_ANALYSIS",
+                            "ARCHITECTURE",
+                            "IMPLEMENTATION",
+                            "SYNC",
+                            "TESTING",
+                            "DOCUMENTATION",
+                            "RELEASE"
+                        ]
+                    },
+                    "agent": {
+                        "type": "string"
+                    },
+                    "dependsOn": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "join": {
+                        "type": "string",
+                        "enum": [
+                            "ALL",
+                            "ANY"
+                        ]
+                    },
+                    "parallelGroup": {
+                        "type": "string"
+                    },
+                    "autonomy": {
+                        "type": "string",
+                        "enum": [
+                            "FULL",
+                            "SUPERVISED",
+                            "HUMAN_GATED"
+                        ]
+                    },
+                    "approvalKind": {
+                        "type": "string",
+                        "enum": [
+                            "ASSUMPTION_ACCEPTANCE",
+                            "PUBLIC_API",
+                            "PRODUCTION_DEPLOY"
+                        ]
+                    },
+                    "entryGates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "REQUIREMENTS_COMPLETE",
+                                "AMBIGUITY_RESOLVED",
+                                "IMPACT_MAPPED",
+                                "ARCHITECTURE_PRESENT",
+                                "IMPLEMENTATION_COMPLETE",
+                                "TESTS_GREEN",
+                                "DOCS_PRESENT",
+                                "NO_POLICY_VIOLATIONS",
+                                "RELEASE_READY"
+                            ]
+                        }
+                    },
+                    "exitGates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "REQUIREMENTS_COMPLETE",
+                                "AMBIGUITY_RESOLVED",
+                                "IMPACT_MAPPED",
+                                "ARCHITECTURE_PRESENT",
+                                "IMPLEMENTATION_COMPLETE",
+                                "TESTS_GREEN",
+                                "DOCS_PRESENT",
+                                "NO_POLICY_VIOLATIONS",
+                                "RELEASE_READY"
+                            ]
+                        }
+                    },
+                    "maxAttempts": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "fallbackAgent": {
+                        "type": "string"
+                    },
+                    "rollbackAgent": {
+                        "type": "string"
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "PENDING",
+                            "RUNNING",
+                            "WAITING_APPROVAL",
+                            "SUCCEEDED",
+                            "FAILED",
+                            "ROLLED_BACK",
+                            "SKIPPED",
+                            "BLOCKED"
+                        ]
+                    },
+                    "attempts": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "usedFallback": {
+                        "type": "boolean"
+                    },
+                    "startedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "error": {
+                        "type": "string"
+                    }
+                }
+            },
+            "Decision": {
+                "type": "object",
+                "properties": {
+                    "stageId": {
+                        "type": "string",
+                        "description": "Optional when exactly one approval is pending"
+                    },
+                    "comment": {
+                        "type": "string",
+                        "example": "CHG-1001 reviewed"
+                    }
+                }
+            },
+            "Amend": {
+                "type": "object",
+                "properties": {
+                    "artifact": {
+                        "type": "string",
+                        "example": "requirements",
+                        "minLength": 1
+                    },
+                    "changes": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "minProperties": 1
+                    },
+                    "reason": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "artifact",
+                    "changes",
+                    "reason"
+                ]
+            },
+            "CreateUrlRequest": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "example": "https://example.com/some/long/path",
+                        "minLength": 1
+                    },
+                    "alias": {
+                        "type": "string",
+                        "description": "Optional custom alias, 3-32 chars of [A-Za-z0-9_-]",
+                        "example": "launch"
+                    },
+                    "ttlSeconds": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Optional time-to-live in seconds (60..31536000)",
+                        "example": 86400
+                    }
+                },
+                "required": [
+                    "url"
+                ]
+            },
+            "ShortUrlResponse": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "shortUrl": {
+                        "type": "string"
+                    },
+                    "destination": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "expiresAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "customAlias": {
+                        "type": "boolean"
+                    },
+                    "active": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "UpdateUrlRequest": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    },
+                    "ttlSeconds": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "ScenarioView": {
+                "type": "object",
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "enum": [
+                            "GREENFIELD",
+                            "BROWNFIELD",
+                            "AMBIGUOUS"
+                        ]
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "brief": {
+                        "type": "string"
+                    },
+                    "wellDefined": {
+                        "type": "boolean"
+                    },
+                    "stages": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StageSpec"
+                        }
+                    }
+                }
+            },
+            "StageSpec": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "REQUIREMENTS",
+                            "IMPACT_ANALYSIS",
+                            "ARCHITECTURE",
+                            "IMPLEMENTATION",
+                            "SYNC",
+                            "TESTING",
+                            "DOCUMENTATION",
+                            "RELEASE"
+                        ]
+                    },
+                    "agent": {
+                        "type": "string"
+                    },
+                    "dependsOn": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "join": {
+                        "type": "string",
+                        "enum": [
+                            "ALL",
+                            "ANY"
+                        ]
+                    },
+                    "entryGates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "REQUIREMENTS_COMPLETE",
+                                "AMBIGUITY_RESOLVED",
+                                "IMPACT_MAPPED",
+                                "ARCHITECTURE_PRESENT",
+                                "IMPLEMENTATION_COMPLETE",
+                                "TESTS_GREEN",
+                                "DOCS_PRESENT",
+                                "NO_POLICY_VIOLATIONS",
+                                "RELEASE_READY"
+                            ]
+                        }
+                    },
+                    "exitGates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "REQUIREMENTS_COMPLETE",
+                                "AMBIGUITY_RESOLVED",
+                                "IMPACT_MAPPED",
+                                "ARCHITECTURE_PRESENT",
+                                "IMPLEMENTATION_COMPLETE",
+                                "TESTS_GREEN",
+                                "DOCS_PRESENT",
+                                "NO_POLICY_VIOLATIONS",
+                                "RELEASE_READY"
+                            ]
+                        }
+                    },
+                    "autonomy": {
+                        "type": "string",
+                        "enum": [
+                            "FULL",
+                            "SUPERVISED",
+                            "HUMAN_GATED"
+                        ]
+                    },
+                    "approvalKind": {
+                        "type": "string",
+                        "enum": [
+                            "ASSUMPTION_ACCEPTANCE",
+                            "PUBLIC_API",
+                            "PRODUCTION_DEPLOY"
+                        ]
+                    },
+                    "maxAttempts": {
+                        "type": "integer",
+                        "format": "int32"
+                    },
+                    "backoff": {
+                        "type": "string",
+                        "format": "duration"
+                    },
+                    "timeout": {
+                        "type": "string",
+                        "format": "duration"
+                    },
+                    "fallbackAgent": {
+                        "type": "string"
+                    },
+                    "rollbackAgent": {
+                        "type": "string"
+                    },
+                    "parallelGroup": {
+                        "type": "string"
+                    }
+                }
+            },
+            "RunSummary": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "scenario": {
+                        "type": "string",
+                        "enum": [
+                            "GREENFIELD",
+                            "BROWNFIELD",
+                            "AMBIGUOUS"
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "RUNNING",
+                            "WAITING_APPROVAL",
+                            "SUCCEEDED",
+                            "FAILED",
+                            "STOPPED"
+                        ]
+                    },
+                    "initiator": {
+                        "type": "string"
+                    },
+                    "startedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "endedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                }
+            },
+            "TraceEvent": {
+                "type": "object",
+                "properties": {
+                    "sequence": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "runId": {
+                        "type": "string"
+                    },
+                    "stageId": {
+                        "type": "string"
+                    },
+                    "event": {
+                        "type": "string"
+                    },
+                    "detail": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                }
+            },
+            "ReliabilityMetrics": {
+                "type": "object",
+                "properties": {
+                    "runsStarted": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "runsSucceeded": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "runsFailed": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "runsStopped": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "successRate": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "retries": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "fallbacks": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "rollbacks": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "replans": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "approvalsRequested": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "recoveries": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "mttrMs": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "avgEndToEndLatencyMs": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "asOf": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                }
+            },
+            "AnalyticsSummary": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "totalClicks": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "uniqueVisitors": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "lastClickedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "clicksByDay": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    "topReferrers": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "basicAuth": {
+                "type": "http",
+                "scheme": "basic"
+            },
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    }
+}

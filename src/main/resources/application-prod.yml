@@ -1,0 +1,45 @@
+# Activate with SPRING_PROFILES_ACTIVE=prod. Every secret comes from the environment; a missing one fails startup.
+spring:
+  datasource:
+    url: ${DATABASE_URL}                 # e.g. jdbc:postgresql://db:5432/shortener
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:20}
+      connection-timeout: 3000          # milliseconds (Hikari takes a long, not a Duration)
+  # Authentication: set SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI to your OIDC issuer.
+
+server:
+  forward-headers-strategy: framework   # trust X-Forwarded-* from the load balancer only
+  error:
+    include-message: never
+    include-stacktrace: never
+
+logging:
+  structured:
+    format:
+      console: ecs                      # JSON logs incl. MDC requestId, ready for ELK/Datadog/Splunk
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+app:
+  security:
+    users: []
+
+shortener:
+  base-url: ${SHORTENER_BASE_URL}
+  analytics:
+    ip-salt: ${SHORTENER_ANALYTICS_IP_SALT}
+
+orchestrator:
+  governance:
+    auto-approve-allowed: false

@@ -1,0 +1,93 @@
+# Local users (password "password"): alice=ENGINEER, bob=APPROVER, carol=ENGINEER+APPROVER, admin=ADMIN+OPS
+@alice = Basic alice password
+@bob = Basic bob password
+
+### Create a short link (201; replay with same Idempotency-Key -> 200)
+POST http://localhost:8080/api/v1/urls
+Content-Type: application/json
+Authorization: {{alice}}
+Idempotency-Key: create-1
+
+{"url": "https://example.com/some/long/path", "alias": "launch", "ttlSeconds": 86400}
+
+### Redirect (302, public)
+GET http://localhost:8080/launch
+
+### Metadata (owner or admin only)
+GET http://localhost:8080/api/v1/urls/launch
+Authorization: {{alice}}
+
+### Analytics (owner or admin only; bob gets 403)
+GET http://localhost:8080/api/v1/urls/launch/analytics
+Authorization: {{alice}}
+
+### Update destination / TTL
+PATCH http://localhost:8080/api/v1/urls/launch
+Content-Type: application/json
+Authorization: {{alice}}
+
+{"url": "https://example.org/v2", "ttlSeconds": 3600}
+
+### SSRF guard (400)
+POST http://localhost:8080/api/v1/urls
+Content-Type: application/json
+Authorization: {{alice}}
+
+{"url": "http://169.254.169.254/latest/meta-data"}
+
+### Deactivate (204; redirect then returns 410)
+DELETE http://localhost:8080/api/v1/urls/launch
+Authorization: {{alice}}
+
+### Scenario graphs
+GET http://localhost:8080/orchestrator/scenarios
+Authorization: {{alice}}
+
+### Start a run as alice (ENGINEER); copy the id into @runId
+POST http://localhost:8080/orchestrator/runs
+Content-Type: application/json
+Authorization: {{alice}}
+
+{"scenario": "GREENFIELD", "failureMode": "TRANSIENT"}
+
+### Run snapshot
+@runId = replace-me
+GET http://localhost:8080/orchestrator/runs/{{runId}}
+Authorization: {{bob}}
+
+### Approve as bob (APPROVER). alice gets 403: no APPROVER role
+POST http://localhost:8080/orchestrator/runs/{{runId}}/approve
+Content-Type: application/json
+Authorization: {{bob}}
+
+{"stageId": "release", "comment": "CHG-1001"}
+
+### Reject -> rollback
+POST http://localhost:8080/orchestrator/runs/{{runId}}/reject
+Content-Type: application/json
+Authorization: {{bob}}
+
+{"stageId": "release", "comment": "not this week"}
+
+### Amend requirements -> re-plan downstream
+POST http://localhost:8080/orchestrator/runs/{{runId}}/amend
+Content-Type: application/json
+Authorization: {{alice}}
+
+{"artifact": "requirements", "changes": {"acceptanceCriteria": ["Links can be exported as CSV"]}, "reason": "PO scope change"}
+
+### Safe-stop
+POST http://localhost:8080/orchestrator/runs/{{runId}}/stop
+Authorization: {{alice}}
+
+### Audit trace (persisted in the database)
+GET http://localhost:8080/orchestrator/runs/{{runId}}/trace
+Authorization: {{bob}}
+
+### Reliability metrics
+GET http://localhost:8080/orchestrator/metrics
+Authorization: {{bob}}
+
+### Prometheus scrape (OPS role)
+GET http://localhost:8080/actuator/prometheus
+Authorization: Basic admin password

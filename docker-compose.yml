@@ -1,0 +1,39 @@
+# Production-like local stack: PostgreSQL + the app running the prod profile.
+#   docker compose up --build
+# Secrets below are DEMO VALUES. Real deployments inject them from a secret manager.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: shortener
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener-demo-password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DATABASE_URL: jdbc:postgresql://postgres:5432/shortener
+      DATABASE_USERNAME: shortener
+      DATABASE_PASSWORD: shortener-demo-password
+      SHORTENER_BASE_URL: http://localhost:8080
+      SHORTENER_ANALYTICS_IP_SALT: compose-demo-salt-change-me-0123456789
+      # Real deployments authenticate with OIDC instead of the demo users below:
+      # SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://idp.example.com/realms/shortener
+      APP_SECURITY_USERS_0_USERNAME: alice
+      APP_SECURITY_USERS_0_PASSWORD: "{noop}password"
+      APP_SECURITY_USERS_0_ROLES: USER,ENGINEER
+      APP_SECURITY_USERS_1_USERNAME: bob
+      APP_SECURITY_USERS_1_PASSWORD: "{noop}password"
+      APP_SECURITY_USERS_1_ROLES: USER,APPROVER

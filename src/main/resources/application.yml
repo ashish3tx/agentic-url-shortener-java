@@ -1,0 +1,106 @@
+# Defaults = local development. Production overrides live in application-prod.yml.
+spring:
+  application:
+    name: agentic-url-shortener
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  jackson:
+    default-property-inclusion: non_null
+    mapper:
+      accept-case-insensitive-enums: true
+  datasource:
+    # In-memory H2 in PostgreSQL mode, so the same Flyway migrations run locally and in prod.
+    url: jdbc:h2:mem:shortener;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # schema is owned by Flyway, Hibernate only checks it
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  tomcat:
+    max-swallow-size: 1MB
+
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      roles: OPS
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    try-it-out-enabled: true
+    display-request-duration: true
+    operations-sorter: method
+    tags-sorter: alpha
+    persist-authorization: true
+  group-configs:
+    - group: product
+      display-name: Product API (URL shortener)
+      packages-to-scan: com.agentic.shortener.url
+    - group: orchestrator
+      display-name: SDLC Orchestrator
+      packages-to-scan: com.agentic.shortener.orchestrator
+
+app:
+  security:
+    # LOCAL DEVELOPMENT ONLY. Production uses OIDC JWTs and sets no users (see application-prod.yml).
+    users:
+      - username: alice
+        password: "{noop}password"
+        roles: [USER, ENGINEER]
+      - username: bob
+        password: "{noop}password"
+        roles: [USER, APPROVER]
+      - username: carol
+        password: "{noop}password"
+        roles: [USER, ENGINEER, APPROVER]
+      - username: admin
+        password: "{noop}password"
+        roles: [USER, ADMIN, OPS]
+
+shortener:
+  base-url: http://localhost:8080
+  code-length: 7
+  rate-limit:
+    requests: 30
+    window: 60s
+  analytics:
+    retention: 30d
+    ip-salt: local-development-salt-only
+  idempotency-ttl: 24h
+
+orchestrator:
+  run-retention: 24h
+  max-retained-runs: 500
+  shutdown-grace-period: 20s
+  governance:
+    auto-approve-allowed: true
+    four-eyes: true

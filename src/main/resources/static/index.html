@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDLC Control Plane</title>
+<style>
+  :root { --bg:#f7f7f8; --panel:#fff; --ink:#1d1f23; --muted:#646a73; --line:#e3e5e8; --accent:#2f5bea;
+          --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; --idle:#8c959f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  main { display:grid; grid-template-columns: 280px 1fr; gap:16px; padding:16px 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 2px; }
+  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  input[type=text], select { width:100%; }
+  button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+  button.danger { background:var(--bad); border-color:var(--bad); }
+  .runs div { padding:6px 8px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; }
+  .runs div:hover, .runs div.active { background:#eef2ff; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; color:#fff; background:var(--idle); }
+  .SUCCEEDED { background:var(--ok); } .RUNNING { background:var(--accent); } .WAITING_APPROVAL { background:var(--warn); }
+  .FAILED, .ROLLED_BACK, .BLOCKED { background:var(--bad); } .STOPPED, .SKIPPED, .PENDING { background:var(--idle); }
+  .metrics { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; }
+  .metrics b { display:block; font-size:18px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .muted { color:var(--muted); font-size:12px; }
+  pre { background:#f6f8fa; padding:8px; border-radius:6px; overflow:auto; max-height:260px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agentic SDLC control plane</h1>
+  <div class="metrics" id="metrics"></div>
+  <span class="row" style="margin-left:auto">
+    <input type="text" id="username" value="alice" style="width:90px" aria-label="username">
+    <input type="password" id="password" value="password" style="width:100px" aria-label="password">
+    <span class="muted">local users: alice (engineer), bob (approver), carol (both), admin</span>
+    <a class="muted" href="/swagger-ui.html">API docs</a>
+  </span>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Start run</h2>
+      <label>Scenario</label>
+      <select id="scenario"><option>GREENFIELD</option><option>BROWNFIELD</option><option>AMBIGUOUS</option></select>
+      <label>Fault injection</label>
+      <select id="failureMode"><option>NONE</option><option>TRANSIENT</option><option>PERSISTENT</option></select>
+      <label><input type="checkbox" id="autoApprove"> auto-approve (demo only)</label>
+      <div class="row" style="margin-top:10px"><button id="start">Start</button></div>
+    </section>
+    <section><h2>Runs</h2><div class="runs" id="runs"></div></section>
+  </div>
+  <div id="detail"><section><p class="muted">Start or select a run.</p></section></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let selected = null;
+
+// Credentials stay in memory only; production fronts this with OIDC instead of Basic auth.
+function authHeader() {
+  return 'Basic ' + btoa(`${$('username').value}:${$('password').value}`);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', Authorization: authHeader() } });
+  if (res.status === 401) throw new Error('Not signed in: check username/password');
+  if (res.status === 403 && !res.headers.get('content-type')?.includes('json')) throw new Error('Your role is not allowed to do that');
+  const body = res.status === 204 ? null : await res.json();
+  if (!res.ok) throw new Error(body?.detail || res.statusText);
+  return body;
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const badge = (s) => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
+
+$('start').onclick = async () => {
+  try {
+    const run = await api('/orchestrator/runs', { method: 'POST', body: JSON.stringify({
+      scenario: $('scenario').value,
+      autoApprove: $('autoApprove').checked, failureMode: $('failureMode').value }) });
+    selected = run.id; refresh();
+  } catch (e) { alert(e.message); }
+};
+
+async function act(path, payload) {
+  try { await api(`/orchestrator/runs/${selected}/${path}`, { method: 'POST', body: JSON.stringify(payload) }); refresh(); }
+  catch (e) { alert(e.message); }
+}
+window.approve = (stageId) => act('approve', { stageId, comment: 'approved from dashboard' });
+window.reject = (stageId) => act('reject', { stageId, comment: 'rejected from dashboard' });
+window.stopRun = () => act('stop', {});
+window.amend = async () => {
+  const criterion = prompt('New acceptance criterion to add to requirements:');
+  if (!criterion) return;
+  const run = await api(`/orchestrator/runs/${selected}`);
+  const criteria = [...(run.artifacts.requirements?.acceptanceCriteria || []), criterion];
+  act('amend', { artifact: 'requirements', changes: { acceptanceCriteria: criteria }, reason: 'scope change from dashboard' });
+};
+window.pick = (id) => { selected = id; refresh(); };
+
+function renderDetail(run) {
+  const pending = run.approvals.filter((a) => a.status === 'PENDING');
+  const active = !['SUCCEEDED', 'FAILED', 'STOPPED'].includes(run.state);
+  $('detail').innerHTML = `
+  <section>
+    <h2>Run ${esc(run.id)} · ${esc(run.scenario)} ${badge(run.state)}</h2>
+    <div class="muted">initiator ${esc(run.initiator)} · fault ${esc(run.failureMode)} · retries ${run.metrics.retries}
+      · fallbacks ${run.metrics.fallbacks} · rollbacks ${run.metrics.rollbacks} · replans ${run.metrics.replans}
+      ${run.metrics.endToEndLatencyMs != null ? '· e2e ' + run.metrics.endToEndLatencyMs + ' ms' : ''}</div>
+    ${run.error ? `<p style="color:var(--bad)">${esc(run.error)}</p>` : ''}
+    <div class="row" style="margin-top:10px">
+      <span class="muted">signed in as ${esc($('username').value)}</span>
+      ${pending.map((a) => `<button onclick="approve('${a.stageId}')">Approve ${esc(a.kind)}</button>
+        <button class="danger" onclick="reject('${a.stageId}')">Reject</button>`).join('')}
+      ${active ? `<button class="secondary" onclick="amend()">Amend requirements</button>
+        <button class="secondary" onclick="stopRun()">Safe-stop</button>` : ''}
+    </div>
+    ${pending.flatMap((a) => a.warnings).map((w) => `<p style="color:var(--warn)">⚠ ${esc(w)}</p>`).join('')}
+  </section>
+  <section><h2>Stages (topological order)</h2><table>
+    <tr><th>Stage</th><th>State</th><th>Depends on</th><th>Autonomy</th><th>Attempts</th><th>Note</th></tr>
+    ${run.stages.map((s) => `<tr><td><b>${esc(s.id)}</b><div class="muted">${esc(s.name)}${s.parallelGroup ? ' · ∥ ' + esc(s.parallelGroup) : ''}</div></td>
+      <td>${badge(s.state)}</td><td>${esc(s.dependsOn.join(', '))}</td><td>${esc(s.autonomy)}${s.approvalKind ? '<div class="muted">' + esc(s.approvalKind) + '</div>' : ''}</td>
+      <td>${s.attempts}/${s.maxAttempts}${s.usedFallback ? ' + fallback' : ''}</td><td class="muted">${esc(s.error)}</td></tr>`).join('')}
+  </table></section>
+  <section><h2>Decision lineage</h2><table>
+    <tr><th>Stage</th><th>Type</th><th>Outcome</th><th>Actor</th><th>Rationale</th></tr>
+    ${run.decisions.slice().reverse().map((d) => `<tr><td>${esc(d.stageId)}</td><td>${esc(d.type)}</td><td>${esc(d.outcome)}</td>
+      <td>${esc(d.actor)}</td><td class="muted">${esc(d.rationale)}</td></tr>`).join('')}
+  </table></section>
+  <section><h2>Artifacts</h2><pre>${esc(JSON.stringify(run.artifacts, null, 2))}</pre></section>`;
+}
+
+async function refresh() {
+  try {
+    const [runs, metrics] = await Promise.all([api('/orchestrator/runs'), api('/orchestrator/metrics')]);
+    $('metrics').innerHTML = [['success rate', (metrics.successRate * 100).toFixed(0) + '%'], ['runs', metrics.runsStarted],
+      ['retries', metrics.retries], ['rollbacks', metrics.rollbacks], ['MTTR', metrics.mttrMs + ' ms'],
+      ['avg e2e', metrics.avgEndToEndLatencyMs + ' ms']].map(([k, v]) => `<div><b>${esc(v)}</b>${esc(k)}</div>`).join('');
+    $('runs').innerHTML = runs.map((r) => `<div class="${r.id === selected ? 'active' : ''}" onclick="pick('${r.id}')">
+      <span>${esc(r.scenario)} <span class="muted">${esc(r.id)}</span></span>${badge(r.state)}</div>`).join('') || '<p class="muted">No runs yet.</p>';
+    const focused = ['username', 'password'].includes(document.activeElement?.id);
+    if (selected && !focused) renderDetail(await api(`/orchestrator/runs/${selected}`));
+  } catch (e) { console.error(e); }
+}
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
